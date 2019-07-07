@@ -139,7 +139,7 @@ defmodule Extreme.Listener do
               start_live_subscription(last_event, state)
           end
 
-        {:noreply, state}
+        {:noreply, state, :hibernate}
       end
 
       defp start_live_subscription(last_event, state) do
@@ -228,7 +228,7 @@ defmodule Extreme.Listener do
       def handle_info({:DOWN, ref, :process, _pid, reason}, %{subscription_ref: ref} = state)
           when reason in [:pause, :done] do
         Logger.info(fn -> "Subscription to stream #{state.stream_name} is #{inspect(reason)}" end)
-        {:noreply, %{state | subscription: nil, subscription_ref: nil, mode: reason}}
+        {:noreply, %{state | subscription: nil, subscription_ref: nil, mode: reason}, :hibernate}
       end
 
       def handle_info({:DOWN, ref, :process, _pid, _reason}, %{subscription_ref: ref} = state) do
@@ -240,13 +240,13 @@ defmodule Extreme.Listener do
 
         :timer.sleep(reconnect_delay)
         GenServer.cast(self(), :subscribe)
-        {:noreply, state}
+        {:noreply, state, :hibernate}
       end
 
       def handle_info({:on_event, push}, %{subscription: subscription, mode: :live} = state)
           when not is_nil(subscription) do
         {:ok, event_number} = process_push(push, state.stream_name)
-        {:noreply, %{state | last_event: event_number}}
+        {:noreply, %{state | last_event: event_number}, :hibernate}
       end
 
       def handle_info({:on_event, push}, %{subscription: subscription, mode: :patch} = state)
@@ -270,16 +270,16 @@ defmodule Extreme.Listener do
             %{state | last_event: event_number}
           end
 
-        {:noreply, state}
+        {:noreply, state, :hibernate}
       end
 
       def handle_info(:caught_up, %{subscription: subscription} = state)
           when not is_nil(subscription) do
         caught_up()
-        {:noreply, state}
+        {:noreply, state, :hibernate}
       end
 
-      def handle_info(_msg, state), do: {:noreply, state}
+      def handle_info(_msg, state), do: {:noreply, state, :hibernate}
 
       defp _read_events_backward(stream, start \\ -1, count \\ 1) do
         Extreme.Msg.ReadStreamEventsBackward.new(
